@@ -33,6 +33,14 @@ def utc_iso_now():
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+@app.get("/")
+async def welcome():
+    payload = {
+        "status": "success",
+         "details" : " Welcome to my first HNG13 Task 0"
+    }
+    return JSONResponse(content=payload, status_code=200, media_type="application/json")
+
 @app.get("/me")
 async def me():
     """Return profile information plus a dynamic cat fact fetched from an external API."""
@@ -68,4 +76,4 @@ if __name__ == "__main__":
 
     import uvicorn
 
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info")
+    uvicorn.run("main:app", host="127.0.0.1", port=8080, log_level="info")
