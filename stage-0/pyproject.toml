@@ -1,0 +1,11 @@
+[project]
+name = "stage-0"
+version = "0.1.0"
+description = "Stage 0 - Profile API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi[standard]>=0.119.0",
+    "httpx>=0.24.0",
+    "uvicorn[standard]>=0.22.0",
+]
