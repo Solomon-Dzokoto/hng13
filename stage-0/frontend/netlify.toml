@@ -1,0 +1,13 @@
+[build]
+  publish = "/"
+  command = ""
+
+[dev]
+  command = ""
+  port = 8888
+
+[context.production.environment]
+  NODE_ENV = "production"
+
+# Note: This is a simple static site. Netlify will serve files from the repo root of the
+# `frontend` directory when you connect this folder as the publish directory.

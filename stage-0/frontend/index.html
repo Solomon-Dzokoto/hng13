@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Profile Card — Stage 0</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <article
+        class="profile-card"
+        data-testid="test-profile-card"
+        aria-label="User profile card"
+      >
+        <header class="card-header">
+          <figure class="avatar" aria-hidden="false">
+            <img
+              src="./assets/profile.JPG"
+              alt="User avatar"
+              data-testid="test-user-avatar"
+              id="userAvatar"
+            />
+          </figure>
+
+          <div class="header-content">
+            <h2 data-testid="test-user-name">Solomon Dzokoto</h2>
+            <p class="role" data-testid="test-user-role">Frontend Developer</p>
+            <p class="" data-testid="">Current Time :</p>
+            <p class="time" data-testid="test-user-time">0</p>
+          </div>
+        </header>
+
+        <section class="bio" aria-labelledby="bioHeading">
+          <h3 id="bioHeading" data-testid="test-user-bio-heading">About</h3>
+          <p data-testid="test-user-bio">
+            I build delightful, accessible interfaces and enjoy solving problems
+            with clean, semantic HTML.
+          </p>
+        </section>
+
+        <nav
+          class="social"
+          aria-label="Social links"
+          data-testid="test-user-social-links"
+        >
+          <h4 data-testid="test-user-social-heading">Social</h4>
+          <ul>
+            <li>
+              <a
+                href="https://twitter.com/BraSolo73"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="test-user-social-twitter"
+                >Twitter</a
+              >
+            </li>
+            <li>
+              <a
+                href="https://github.com/Solomon-Dzokoto"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="test-user-social-github"
+                >GitHub</a
+              >
+            </li>
+            <li>
+              <a
+                href="https://www.linkedin.com/in/solomon-elorm-dzokoto-10385b31a/"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="test-user-social-linkedin"
+                >LinkedIn</a
+              >
+            </li>
+          </ul>
+        </nav>
+
+        <section class="lists">
+          <section aria-labelledby="hobbiesHeading">
+            <h4 id="hobbiesHeading" data-testid="test-user-hobbies-heading">
+              Hobbies
+            </h4>
+            <ul data-testid="test-user-hobbies">
+              <li data-testid="test-user-hobby-1">Design systems</li>
+              <li data-testid="test-user-hobby-2">Open source</li>
+              <li data-testid="test-user-hobby-3">Cooking</li>
+            </ul>
+          </section>
+
+          <section aria-labelledby="dislikesHeading">
+            <h4 id="dislikesHeading" data-testid="test-user-dislikes-heading">
+              Dislikes
+            </h4>
+            <ul data-testid="test-user-dislikes">
+              <li data-testid="test-user-dislike-1">Laziness</li>
+              <li data-testid="test-user-dislike-2">Cheating</li>
+              <li data-testid="test-user-dislike-3">Lying</li>
+            </ul>
+          </section>
+        </section>
+      </article>
+    </main>
+
+    <script src="script.js" defer></script>
+  </body>
+</html>
