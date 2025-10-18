@@ -49,3 +49,23 @@ Notes about `netlify.toml`
 ------------------------
 - A minimal `netlify.toml` is included. Because this project is a plain static site there are no build steps.
 
+Deploying to GitHub Pages
+-------------------------
+
+This repository includes a GitHub Actions workflow that will publish the contents of the `stage-0/frontend/` folder to the `gh-pages` branch whenever you push to `main`.
+
+Steps to enable:
+
+1. Push your code to the `main` branch on GitHub.
+2. Make sure the workflow file exists at `.github/workflows/gh-pages.yml` (it is included here).
+3. On GitHub the action will run automatically on push to `main` and publish the `stage-0/frontend/` folder to the `gh-pages` branch.
+4. In your repository Settings → Pages, set the source to the `gh-pages` branch and the root directory `/`.
+5. Wait a minute and your site will be available at `https://<your-username>.github.io/<your-repo>/`.
+
+Notes:
+- The workflow uses the built-in `GITHUB_TOKEN` so no extra secret is required.
+- If you want the site to publish from a different branch or path, edit `.github/workflows/gh-pages.yml` and change `publish_dir`.
+
+Note: The repository root contains a `stage-0/` folder (this project). The workflow publishes that subfolder's `frontend/` to GitHub Pages so you can keep other projects or code at repo root.
+
+
