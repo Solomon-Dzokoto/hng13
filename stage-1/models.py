@@ -10,8 +10,9 @@ def compute_sha256(value: str) -> str:
 
 def analyze_string(value: str) -> Dict:
     length = len(value)
-    lowered = value.lower()
-    is_palindrome = lowered == lowered[::-1]
+  
+    cleaned = ''.join(c.lower() for c in value if c.isalnum())
+    is_palindrome = cleaned == cleaned[::-1] if cleaned else False
     unique_characters = len(set(value))
     word_count = 0
     if value.strip():
