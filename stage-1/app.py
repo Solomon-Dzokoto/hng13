@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
@@ -7,7 +8,16 @@ import db
 import models
 import nlp_parser
 
-app = FastAPI(title="String Analyzer Service - Stage 1")
+app = FastAPI(title="String Analyzer Service - Stage 1", redirect_slashes=False)
+
+# Add CORS middleware to allow autograder access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class CreateRequest(BaseModel):
