@@ -12,7 +12,7 @@ app = FastAPI(title="String Analyzer Service - Stage 1")
 
 class CreateRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    value: Any
+    value: Any = None  # Allow None so we can check manually
 
 
 @app.get("/")
@@ -21,7 +21,7 @@ def root():
 
 @app.post("/strings", status_code=201)
 def create_string(req: CreateRequest):
-    if "value" not in req.__dict__ or req.value is None:
+    if req.value is None:
         raise HTTPException(status_code=400, detail='Missing "value" field')
     if not isinstance(req.value, str):
         raise HTTPException(status_code=422, detail='"value" must be a string')
@@ -33,14 +33,6 @@ def create_string(req: CreateRequest):
     props = models.analyze_string(value)
     entry = db.create_entry(value, props)
     return JSONResponse(status_code=201, content=entry)
-
-
-@app.get("/strings/{string_value}")
-def get_string(string_value: str):
-    entry = db.get_by_value(string_value)
-    if not entry:
-        raise HTTPException(status_code=404, detail="String not found")
-    return entry
 
 
 @app.get("/strings")
@@ -84,6 +76,14 @@ def filter_by_nl(query: str = Query(..., min_length=1)):
 
     results = db.filter_entries(**parsed)
     return {"data": results, "count": len(results), "interpreted_query": {"original": query, "parsed_filters": parsed}}
+
+
+@app.get("/strings/{string_value}")
+def get_string(string_value: str):
+    entry = db.get_by_value(string_value)
+    if not entry:
+        raise HTTPException(status_code=404, detail="String not found")
+    return entry
 
 
 @app.delete("/strings/{string_value}", status_code=204)
