@@ -9,6 +9,11 @@ Install dependencies into a virtualenv, cd to `stage-1`, then:
 
 python -m uvicorn app:app --reload --port 8000
 
+Or use the provided start script (recommended for deployment):
+
+chmod +x start.sh
+PORT=8080 ./start.sh
+
 Run tests:
 
 pytest -q

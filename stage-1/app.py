@@ -15,6 +15,10 @@ class CreateRequest(BaseModel):
     value: Any
 
 
+@app.get("/")
+def root():
+    return {"ok": True}
+
 @app.post("/strings", status_code=201)
 def create_string(req: CreateRequest):
     if "value" not in req.__dict__ or req.value is None:
