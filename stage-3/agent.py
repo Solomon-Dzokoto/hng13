@@ -3,10 +3,15 @@ from typing import List, Optional
 import google.generativeai as genai
 from config import settings
 from schemas import Message, MessageContent
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Thread pool for running blocking Gemini API calls
+thread_pool = ThreadPoolExecutor(max_workers=10)
 
 
 class CodeReviewAgent:
@@ -45,36 +50,42 @@ Keep responses concise but thorough."""
         if not settings.gemini_api_key:
             raise ValueError("Gemini API key not configured")
         
+        logger.info(f"Initializing agent with model: {settings.gemini_model}")
         genai.configure(api_key=settings.gemini_api_key)
-        # Try to initialize the configured model. If it's not available for this account,
-        # fall back to the first model that supports generateContent and warn in logs.
+        
+       
         try:
             # Try with system_instruction (newer API versions)
             try:
+                logger.info("Attempting to create GenerativeModel with system_instruction...")
                 self.model = genai.GenerativeModel(
                     model_name=settings.gemini_model,
                     system_instruction=self.SYSTEM_PROMPT,
                 )
                 self.use_system_instruction = True
-            except TypeError:
+                logger.info("✅ Model created with system_instruction support")
+            except TypeError as te:
                 # Fall back to model without system_instruction (older API)
-                logger.info("system_instruction not supported, will prepend to messages")
+                logger.info(f"system_instruction not supported ({te}), will prepend to messages")
                 self.model = genai.GenerativeModel(model_name=settings.gemini_model)
                 self.use_system_instruction = False
+                logger.info("✅ Model created without system_instruction")
         except Exception as e:
             logger.warning(
                 f"Configured Gemini model '{settings.gemini_model}' not available: {e}. Listing available models to find a compatible fallback."
             )
             fallback = None
             try:
+                logger.info("Listing available Gemini models (this may take a moment)...")
                 for m in genai.list_models():
                     methods = getattr(m, "supported_generation_methods", [])
                     if "generateContent" in methods:
                         # m.name is of the form 'models/{model-id}'
                         fallback = m.name
+                        logger.info(f"Found compatible fallback model: {fallback}")
                         break
-            except Exception as e:
-                logger.error(f"Failed to list Gemini models: {e}")
+            except Exception as e2:
+                logger.error(f"Failed to list Gemini models: {e2}")
 
             if fallback:
                 logger.info(f"Using fallback model: {fallback}")
@@ -84,10 +95,12 @@ Keep responses concise but thorough."""
                 except TypeError:
                     self.model = genai.GenerativeModel(model_name=fallback)
                     self.use_system_instruction = False
+                logger.info(f"✅ Fallback model initialized successfully")
             else:
-                raise
+                raise ValueError("No compatible Gemini model found for this account")
+        
         self.chat = None
-        logger.info(f"Initialized with Google Gemini model: {settings.gemini_model}")
+        logger.info(f"Agent initialization complete. Model: {settings.gemini_model}, system_instruction_support: {self.use_system_instruction}")
     
     def _build_conversation_history(self, messages: List[Message]) -> List[dict]:
         """Build conversation history for Gemini"""
@@ -136,15 +149,24 @@ Keep responses concise but thorough."""
             
             logger.info(f"Processing message with {len(messages)} messages in history")
             
-            # Start a new chat with history or continue existing chat
-            self.chat = self.model.start_chat(history=history)
             
-            # Generate response
-            response = self.chat.send_message(
-                user_input,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=2000,
+            loop = asyncio.get_event_loop()
+            
+          
+            self.chat = await loop.run_in_executor(
+                thread_pool,
+                lambda: self.model.start_chat(history=history)
+            )
+            
+            # Send message in thread pool with generation config
+            response = await loop.run_in_executor(
+                thread_pool,
+                lambda: self.chat.send_message(
+                    user_input,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.7,
+                        max_output_tokens=2000,
+                    )
                 )
             )
             
@@ -154,7 +176,7 @@ Keep responses concise but thorough."""
             return result
             
         except Exception as e:
-            logger.error(f"Error processing message: {str(e)}")
+            logger.error(f"Error processing message: {str(e)}", exc_info=True)
             return f"I encountered an error while processing your request: {str(e)}. Please try again."
 
 

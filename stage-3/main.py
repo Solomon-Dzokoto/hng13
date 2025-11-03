@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 import logging
 from typing import Optional
+import asyncio
 
 from config import settings
 from schemas import (
@@ -95,11 +96,23 @@ async def agent_endpoint(request: AgentRequest):
                 detail="No messages provided in request"
             )
         
-        # Get agent instance
+        # Get agent instance (may initialize on first call)
+        logger.info("Getting agent instance...")
         code_agent = get_agent()
+        logger.info("Agent ready, processing message...")
         
-        # Process message through AI agent
-        response_text = await code_agent.process_message(request.messages)
+        # Process message through AI agent with timeout
+        try:
+            response_text = await asyncio.wait_for(
+                code_agent.process_message(request.messages),
+                timeout=60.0  # 60 second timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error("Agent message processing timed out after 60 seconds")
+            raise HTTPException(
+                status_code=504,
+                detail="Agent processing timed out. Please try again."
+            )
         
         # Format response according to A2A protocol
         response = AgentResponse(
