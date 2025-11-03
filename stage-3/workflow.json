@@ -16,7 +16,7 @@
       ],
       "type": "a2a/agent-node",
       "typeVersion": 1,
-      "url": "YOUR_DEPLOYMENT_URL/a2a/agent/codeReviewAssistant"
+      "url": "https://hng13-production-76f0.up.railway.app/a2a/agent/codeReviewAssistant"
     }
   ],
   "pinData": {},
