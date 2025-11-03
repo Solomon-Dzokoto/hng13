@@ -36,7 +36,7 @@ class HealthResponse(BaseModel):
     agent: str
     version: str
     timestamp: str
-    ai_provider: str
+    ai_provider: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):
