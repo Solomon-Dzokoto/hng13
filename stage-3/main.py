@@ -62,8 +62,7 @@ async def root():
         status="healthy",
         agent=settings.agent_name,
         version=settings.agent_version,
-        timestamp=datetime.utcnow().isoformat(),
-        ai_provider=settings.ai_provider
+        timestamp=datetime.utcnow().isoformat()
     )
 
 
@@ -74,8 +73,7 @@ async def health_check():
         status="healthy",
         agent=settings.agent_name,
         version=settings.agent_version,
-        timestamp=datetime.utcnow().isoformat(),
-        ai_provider=settings.ai_provider
+        timestamp=datetime.utcnow().isoformat()
     )
 
 
@@ -115,8 +113,7 @@ async def agent_endpoint(request: AgentRequest):
             metadata={
                 "agent": settings.agent_name,
                 "version": settings.agent_version,
-                "timestamp": datetime.utcnow().isoformat(),
-                "provider": settings.ai_provider
+                "timestamp": datetime.utcnow().isoformat()
             }
         )
         
@@ -161,7 +158,6 @@ async def agent_info():
             "Python", "JavaScript", "TypeScript", "Java", "Go", 
             "Rust", "C++", "C#", "Ruby", "PHP", "Swift", "Kotlin"
         ],
-        "ai_provider": settings.ai_provider,
         "endpoints": {
             "a2a": "/a2a/agent/codeReviewAssistant",
             "chat": "/chat",
