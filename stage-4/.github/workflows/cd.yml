@@ -1,0 +1,295 @@
+name: CD - Deploy API Gateway
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'stage-4/**'
+      - '.github/workflows/cd.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  PYTHON_VERSION: '3.11'
+  WORKING_DIRECTORY: stage-4
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/notification-gateway
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./stage-4
+          file: ./stage-4/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment:
+      name: staging
+      url: https://api-staging.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts
+          
+          # Deploy using SSH (example with docker-compose)
+          ssh -i ~/.ssh/deploy_key $STAGING_USER@$STAGING_HOST << 'EOF'
+            cd /opt/notification-gateway
+            docker-compose pull gateway
+            docker-compose up -d gateway
+            docker-compose ps
+          EOF
+
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+
+      - name: Health check
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL || 'https://api-staging.example.com' }}
+        run: |
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          
+          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+            if curl -f -m 10 "$STAGING_URL/health"; then
+              echo "Health check passed"
+              exit 0
+            fi
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            echo "Health check attempt $RETRY_COUNT failed, retrying..."
+            sleep 5
+          done
+          
+          echo "Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key $STAGING_USER@$STAGING_HOST << 'EOF'
+            cd /opt/notification-gateway
+            docker-compose down gateway
+            docker-compose up -d gateway --scale gateway=0
+            docker-compose up -d gateway
+          EOF
+
+      - name: Notify deployment status
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Staging deployment ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-staging]
+    if: github.event.inputs.environment == 'production' || github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://api.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Manual approval gate
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: team-leads,devops-team
+          minimum-approvals: 1
+          issue-title: "Deploy notification-gateway to production"
+          issue-body: "Please approve or deny the production deployment of notification-gateway"
+
+      - name: Deploy to production (Blue-Green)
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $PROD_HOST >> ~/.ssh/known_hosts
+          
+          # Deploy new version (green)
+          ssh -i ~/.ssh/deploy_key $PROD_USER@$PROD_HOST << 'EOF'
+            cd /opt/notification-gateway
+            
+            # Pull new image
+            docker pull $IMAGE_TAG
+            
+            # Start green deployment
+            docker-compose -f docker-compose.prod.yml up -d gateway-green
+            
+            # Wait for green to be healthy
+            sleep 30
+            
+            # Switch traffic to green
+            docker-compose -f docker-compose.prod.yml exec lb nginx -s reload
+            
+            # Stop blue deployment
+            docker-compose -f docker-compose.prod.yml stop gateway-blue
+          EOF
+
+      - name: Production health check
+        env:
+          PROD_URL: ${{ secrets.PROD_URL || 'https://api.example.com' }}
+        run: |
+          MAX_RETRIES=15
+          RETRY_COUNT=0
+          
+          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+            if curl -f -m 10 "$PROD_URL/health"; then
+              echo "Production health check passed"
+              exit 0
+            fi
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            echo "Health check attempt $RETRY_COUNT failed, retrying..."
+            sleep 5
+          done
+          
+          echo "Production health check failed"
+          exit 1
+
+      - name: Rollback production on failure
+        if: failure()
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key $PROD_USER@$PROD_HOST << 'EOF'
+            cd /opt/notification-gateway
+            
+            # Switch back to blue
+            docker-compose -f docker-compose.prod.yml up -d gateway-blue
+            docker-compose -f docker-compose.prod.yml exec lb nginx -s reload
+            
+            # Stop failed green deployment
+            docker-compose -f docker-compose.prod.yml stop gateway-green
+          EOF
+
+      - name: Cleanup old images
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key $PROD_USER@$PROD_HOST << 'EOF'
+            docker image prune -af --filter "until=72h"
+          EOF
+
+      - name: Notify production deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Production deployment ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  post-deployment:
+    name: Post-Deployment Tasks
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: success()
+    
+    steps:
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            Automated release from successful production deployment
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+
+      - name: Update documentation
+        run: |
+          echo "Deployment completed successfully at $(date)"
+          # Add logic to update deployment docs, changelog, etc.

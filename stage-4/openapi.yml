@@ -1,0 +1,506 @@
+openapi: 3.0.3
+info:
+  title: Notification Gateway API
+  description: API Gateway for distributed notification system supporting email and push notifications
+  version: 1.0.0
+  contact:
+    name: Notifications Team
+    email: team@example.com
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://api-staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: notifications
+    description: Notification management endpoints
+  - name: health
+    description: Health check and monitoring
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the gateway and its dependencies
+      tags:
+        - health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "ok"
+                timestamp: "2025-11-10T12:00:00Z"
+                dependencies:
+                  rabbitmq: "ok"
+                  redis: "ok"
+                  postgres: "ok"
+        '503':
+          description: Service is degraded or down
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "degraded"
+                timestamp: "2025-11-10T12:00:00Z"
+                dependencies:
+                  rabbitmq: "ok"
+                  redis: "down"
+                  postgres: "ok"
+
+  /api/v1/notifications:
+    post:
+      summary: Create a new notification
+      description: Submit a notification request for email or push delivery
+      tags:
+        - notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: x-correlation-id
+          schema:
+            type: string
+            format: uuid
+          description: Optional correlation ID for request tracing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNotificationRequest'
+            examples:
+              email_notification:
+                summary: Email notification example
+                value:
+                  notification_type: "email"
+                  user_id: "550e8400-e29b-41d4-a716-446655440000"
+                  template_code: "welcome_email"
+                  variables:
+                    name: "John Doe"
+                    link: "https://example.com/verify"
+                    meta:
+                      company: "Acme Inc"
+                  request_id: "req_123456789"
+                  priority: 1
+                  metadata:
+                    campaign_id: "spring_2025"
+              push_notification:
+                summary: Push notification example
+                value:
+                  notification_type: "push"
+                  user_id: "550e8400-e29b-41d4-a716-446655440000"
+                  template_code: "order_shipped"
+                  variables:
+                    name: "Jane Smith"
+                    link: "https://example.com/track/12345"
+                  request_id: "req_987654321"
+                  priority: 2
+      responses:
+        '200':
+          description: Notification created successfully (or returned existing for duplicate request_id)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+              example:
+                success: true
+                data:
+                  notification_id: "ntf_550e8400-e29b-41d4-a716-446655440000"
+                  status: "pending"
+                  created_at: "2025-11-10T12:00:00Z"
+                error: null
+                message: "Notification queued successfully"
+                meta: null
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                data: null
+                error: "Validation error: notification_type must be 'email' or 'push'"
+                message: "Invalid request"
+                meta: null
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                data: null
+                error: "Invalid or missing authorization token"
+                message: "Unauthorized"
+                meta: null
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                data: null
+                error: "Rate limit exceeded. Retry after 60 seconds"
+                message: "Too many requests"
+                meta: null
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/notifications/{notification_id}:
+    get:
+      summary: Get notification status
+      description: Retrieve the current status of a notification
+      tags:
+        - notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: notification_id
+          required: true
+          schema:
+            type: string
+          description: Notification ID
+      responses:
+        '200':
+          description: Notification status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationStatusResponse'
+              example:
+                success: true
+                data:
+                  notification_id: "ntf_550e8400-e29b-41d4-a716-446655440000"
+                  status: "delivered"
+                  notification_type: "email"
+                  created_at: "2025-11-10T12:00:00Z"
+                  updated_at: "2025-11-10T12:01:30Z"
+                  attempts: 1
+                error: null
+                message: "Status retrieved successfully"
+                meta: null
+        '404':
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/notification_status:
+    post:
+      summary: Update notification status
+      description: Internal endpoint for services to update notification delivery status
+      tags:
+        - notifications
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+            example:
+              notification_id: "ntf_550e8400-e29b-41d4-a716-446655440000"
+              status: "delivered"
+              timestamp: "2025-11-10T12:01:30Z"
+              error: null
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusUpdateResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT authentication token
+
+  schemas:
+    NotificationType:
+      type: string
+      enum:
+        - email
+        - push
+      description: Type of notification to send
+
+    NotificationStatus:
+      type: string
+      enum:
+        - pending
+        - delivered
+        - failed
+      description: Current status of the notification
+
+    UserData:
+      type: object
+      required:
+        - name
+        - link
+      properties:
+        name:
+          type: string
+          description: User's name for template substitution
+        link:
+          type: string
+          format: uri
+          description: Action link for the notification
+        meta:
+          type: object
+          additionalProperties: true
+          description: Additional metadata for template variables
+
+    CreateNotificationRequest:
+      type: object
+      required:
+        - notification_type
+        - user_id
+        - template_code
+        - variables
+        - request_id
+        - priority
+      properties:
+        notification_type:
+          $ref: '#/components/schemas/NotificationType'
+        user_id:
+          type: string
+          format: uuid
+          description: Target user ID
+        template_code:
+          type: string
+          description: Template identifier or path
+        variables:
+          $ref: '#/components/schemas/UserData'
+        request_id:
+          type: string
+          description: Unique idempotency key provided by client
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Priority level (1=highest, 10=lowest)
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional metadata for tracking and analytics
+
+    NotificationData:
+      type: object
+      properties:
+        notification_id:
+          type: string
+          description: Unique notification identifier
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when notification was created
+
+    NotificationStatusData:
+      type: object
+      properties:
+        notification_id:
+          type: string
+          description: Unique notification identifier
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+        notification_type:
+          $ref: '#/components/schemas/NotificationType'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        attempts:
+          type: integer
+          description: Number of delivery attempts
+
+    PaginationMeta:
+      type: object
+      required:
+        - total
+        - limit
+        - page
+        - total_pages
+        - has_next
+        - has_previous
+      properties:
+        total:
+          type: integer
+          description: Total number of items
+        limit:
+          type: integer
+          description: Items per page
+        page:
+          type: integer
+          description: Current page number
+        total_pages:
+          type: integer
+          description: Total number of pages
+        has_next:
+          type: boolean
+          description: Whether there is a next page
+        has_previous:
+          type: boolean
+          description: Whether there is a previous page
+
+    NotificationResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/NotificationData'
+        error:
+          type: string
+          nullable: true
+        message:
+          type: string
+        meta:
+          nullable: true
+
+    NotificationStatusResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/NotificationStatusData'
+        error:
+          type: string
+          nullable: true
+        message:
+          type: string
+        meta:
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        data:
+          nullable: true
+        error:
+          type: string
+        message:
+          type: string
+        meta:
+          nullable: true
+
+    UpdateStatusRequest:
+      type: object
+      required:
+        - notification_id
+        - status
+      properties:
+        notification_id:
+          type: string
+          description: Notification ID to update
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+        timestamp:
+          type: string
+          format: date-time
+        error:
+          type: string
+          nullable: true
+          description: Error message if status is 'failed'
+
+    StatusUpdateResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            notification_id:
+              type: string
+            updated:
+              type: boolean
+        error:
+          type: string
+          nullable: true
+        message:
+          type: string
+        meta:
+          nullable: true
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+            - down
+        timestamp:
+          type: string
+          format: date-time
+        dependencies:
+          type: object
+          properties:
+            rabbitmq:
+              type: string
+              enum:
+                - ok
+                - down
+            redis:
+              type: string
+              enum:
+                - ok
+                - down
+            postgres:
+              type: string
+              enum:
+                - ok
+                - down
